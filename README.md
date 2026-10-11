@@ -1,1 +1,1 @@
-# ColorPicker
+# Series Clinch Calculator
