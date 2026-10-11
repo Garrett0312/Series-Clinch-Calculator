@@ -111,7 +111,8 @@ function renderWI(P,riv,R,next){
     }
     rows+='</div>';
   }
-  c.innerHTML=`<h2>Minimum finish to guarantee the title</h2><p>${L.join('</p><p>')}</p><p class="note">Assumes rivals do their absolute best (win + fastest lap) every race.</p><h2 style="margin-top:16px">What-if</h2><p class="sub" style="margin:0">Pick your finish in upcoming races (leave blank for "unknown") to see where you'd stand.</p>${rows}<div id="wiOut"></div>`;
+  c.innerHTML=`<h2>What-if</h2><p class="sub" style="margin:0">Pick your finish in upcoming races (leave blank for "unknown") to see where you'd stand.</p>${rows}<div id="wiOut"></div>`;
+  $('result').insertAdjacentHTML('beforeend',`<div style="border-top:1px solid var(--line);margin-top:12px;padding-top:12px"><h2>Minimum finish to guarantee the title</h2><p>${L.join('</p><p>')}</p><p class="note">Assumes rivals do their absolute best (win + fastest lap) every race.</p></div>`);
   c.querySelectorAll('select,input').forEach(e=>e.addEventListener('input',updateWI));
   updateWI();
 }
