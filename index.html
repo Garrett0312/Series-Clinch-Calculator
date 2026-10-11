@@ -32,6 +32,7 @@ th{font-size:12px;color:var(--mute);font-weight:600}
 tr.me td{background:var(--me)}
 .note{font-size:12px;color:var(--mute);margin-top:8px}
 p{margin:4px 0}
+.wi{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:8px 0}.wi>div{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute)}.wi label{flex-direction:row;align-items:center;gap:6px;min-width:0;flex:none}.wi input[type=checkbox]{width:auto}
 </style>
 </head>
 <body>
@@ -41,8 +42,8 @@ p{margin:4px 0}
 
 <div class="card">
   <div class="row">
-    <label>Races in series<input id="total" type="number" min="1" value="10" inputmode="numeric"></label>
-    <label>Next race # <input id="next" type="number" min="1" value="8" inputmode="numeric"></label>
+    <label>Races in series<input id="total" type="number" min="1" placeholder="e.g. 10" inputmode="numeric"></label>
+    <label>Next race # <input id="next" type="number" min="1" placeholder="e.g. 8" inputmode="numeric"></label>
     <label>Your place now<select id="place"></select></label>
   </div>
   <h2 style="margin-top:14px">Standings points</h2>
@@ -53,6 +54,7 @@ p{margin:4px 0}
 <div class="card" id="result"></div>
 <div class="card" id="nextCard"></div>
 <div class="card" id="rivalCard"></div>
+<div class="card" id="wiCard"></div>
 <p class="note">Scoring: 20-16-14-12-10-8-6-5-4-3-2-1, +1 fastest lap (max 21/race, min 1/race). Ties are treated as <i>not</i> a win, since the tiebreaker is unknown. "Alive" assumes the best realistic case for you in later races (win + fastest lap) while rivals' points get spread as evenly as possible.</p>
 </main>
 <script>
@@ -60,11 +62,11 @@ const PTS=[20,16,14,12,10,8,6,5,4,3,2,1];
 const SAMPLE=[162,151,140,128,119,108,97,88,75,66,52,40];
 const $=id=>document.getElementById(id);
 const placeSel=$('place'),grid=$('grid');
-for(let i=1;i<=12;i++){placeSel.add(new Option(ord(i),i))}
-placeSel.value=2;
+placeSel.add(new Option('Select…',''));for(let i=1;i<=12;i++){placeSel.add(new Option(ord(i),i))}
+placeSel.value='';
 function ord(n){return n+(n==1?'st':n==2?'nd':n==3?'rd':'th')}
 SAMPLE.forEach((v,i)=>{const d=document.createElement('div');d.className='slot';d.id='s'+i;
-d.innerHTML=`<b>${ord(i+1)}</b><input type="number" inputmode="numeric" min="0" id="p${i}" value="${v}">`;grid.appendChild(d)});
+d.innerHTML=`<b>${ord(i+1)}</b><input type="number" inputmode="numeric" min="0" id="p${i}" placeholder="pts">`;grid.appendChild(d)});
 document.querySelectorAll('input,select').forEach(e=>e.addEventListener('input',calc));
 
 // Best case for me: rivals' points spread as evenly as possible over R races where I win.
@@ -91,6 +93,52 @@ function evalFinish(k,fl,P,riv,R){
 }
 const LBL=['<span class="bad">Out</span>','<span class="warn">Alive</span>','<span class="good">🏆 Clinched</span>'];
 
+let ctx=null;
+function renderWI(P,riv,R,next){
+  ctx={P,riv,R};
+  const c=$('wiCard');c.style.display='';
+  const un=[false,true].map(fl=>{let ok=-1;for(let k=0;k<12;k++){const mine=P+R*(PTS[k]+(fl?1:0));const rv=R*((k===0?16:20)+(fl?0:1));if(riv.every(p=>mine>p+rv))ok=k}return ok});
+  const L=[];
+  if(un[0]>=0)L.push(`Finish <b>${ord(un[0]+1)} or better</b> in every remaining race and the title is locked up, no matter what anyone else does.`);
+  if(un[1]>=0&&un[1]!==un[0])L.push(`If you also grab fastest lap every race, <b>${ord(un[1]+1)} or better</b> is enough.`);
+  if(!L.length)L.push('No steady finish guarantees the title. You need help from the other drivers.');
+  let rows='';
+  if(R<=30){
+    rows='<div class="wi">';
+    for(let i=0;i<R;i++){
+      const opts='<option value="">—</option>'+PTS.map((_,k)=>`<option value="${k}">${ord(k+1)}</option>`).join('');
+      rows+=`<div>Race ${next+i}<select data-r="${i}">${opts}</select><label><input type="checkbox" data-f="${i}"> fastest lap</label></div>`;
+    }
+    rows+='</div>';
+  }
+  c.innerHTML=`<h2>Minimum finish to guarantee the title</h2><p>${L.join('</p><p>')}</p><p class="note">Assumes rivals do their absolute best (win + fastest lap) every race.</p><h2 style="margin-top:16px">What-if</h2><p class="sub" style="margin:0">Pick your finish in upcoming races (leave blank for "unknown") to see where you'd stand.</p>${rows}<div id="wiOut"></div>`;
+  c.querySelectorAll('select,input').forEach(e=>e.addEventListener('input',updateWI));
+  updateWI();
+}
+function updateWI(){
+  const {P,riv,R}=ctx,out=$('wiOut');
+  if(R>30){out.innerHTML='<p class="note">What-if is available when 30 or fewer races remain.</p>';return}
+  const plan=[];
+  for(let i=0;i<R;i++){const v=document.querySelector(`#wiCard select[data-r="${i}"]`).value;const f=document.querySelector(`#wiCard input[data-f="${i}"]`).checked;plan.push(v===''?null:{k:+v,fl:f})}
+  let meW=P,meB=P;const rw=riv.slice();let rb=riv.slice();
+  plan.forEach(p=>{
+    if(p){
+      meW+=PTS[p.k]+(p.fl?1:0);meB+=PTS[p.k]+(p.fl?1:0);
+      const add=(p.k===0?16:20)+(p.fl?0:1);for(let j=0;j<11;j++)rw[j]+=add;
+      const slots=PTS.filter((_,i)=>i!==p.k);rb.sort((a,b)=>a-b);for(let j=0;j<11;j++)rb[j]+=slots[j];
+      if(!p.fl){rb.sort((a,b)=>a-b);rb[0]+=1}
+    }else{
+      meW+=1;meB+=21;for(let j=0;j<11;j++)rw[j]+=21;
+      rb.sort((a,b)=>a-b);for(let j=0;j<11;j++)rb[j]+=PTS[1+j];
+    }
+  });
+  const rwMax=Math.max(...rw),rbMax=Math.max(...rb);
+  let v;
+  if(meW>rwMax)v='<p class="verdict good">🏆 Title locked up</p><p>Whatever happens in the races you left blank, nobody can catch you.</p>';
+  else if(meB>rbMax)v='<p class="verdict warn">Still undecided</p><p>You can still win, but it isn\'t guaranteed.</p>';
+  else v='<p class="verdict bad">You can\'t win with these results</p><p>Someone ends up ahead of you even in the best case.</p>';
+  out.innerHTML=`${v}<p class="note">Your final total: ${meW===meB?meW:meW+'–'+meB} pts. Strongest rival: ${rbMax===rwMax?rwMax:rbMax+'–'+rwMax} pts.</p>`;
+}
 function calc(){
   const total=+$('total').value,next=+$('next').value,place=+placeSel.value;
   document.querySelectorAll('.slot').forEach((s,i)=>s.classList.toggle('me',i===place-1));
@@ -99,11 +147,11 @@ function calc(){
   const R=total-next+1;
   const res=$('result'),nc=$('nextCard'),rc=$('rivalCard');
   nc.style.display=rc.style.display='';
-  if(!(total>=1)||!(next>=1)){res.innerHTML='<p>Enter the series length and next race number.</p>';nc.style.display=rc.style.display='none';return}
+  if(!(total>=1)||!(next>=1)||!(place>=1)||!SAMPLE.every((_,i)=>$('p'+i).value!=='')){res.innerHTML='<p>Fill in the series length, next race #, your place, and all 12 point totals to see results.</p>';nc.style.display=rc.style.display=$('wiCard').style.display='none';return}
   if(R<=0){
     const win=P>Math.max(...riv);
     res.innerHTML=`<p class="verdict ${win?'good':'bad'}">${win?'🏆 Series complete — you won':'Series complete'}</p>`;
-    nc.style.display=rc.style.display='none';return;
+    nc.style.display=rc.style.display=$('wiCard').style.display='none';return;
   }
   const floor=P+R;
   const threats=riv.map(p=>p+21*R).filter(m=>m>=floor).length;
@@ -138,6 +186,7 @@ function calc(){
     return `<tr><td>${ord(i+1)}</td><td>${p}</td><td>${mx}</td><td>${can?'<span class="warn">Can catch you</span>':'<span class="good">Can\'t catch you</span>'}</td></tr>`;
   }).join('');
   rc.innerHTML=`<h2>Rival threat check</h2><div class="wrap"><table><tr><th>Place</th><th>Points</th><th>Max reachable</th><th>Status</th></tr>${rr}</table></div><p class="note">Compares each rival's best case against your guaranteed floor (finishing last every race).</p>`;
+  renderWI(P,riv,R,next);
 }
 calc();
 </script>
