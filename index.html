@@ -78,20 +78,27 @@ function canWin(me,riv,R){
   }
   return me+21*R>Math.max(...riv);
 }
-// Evaluate finishing k (0-index) in the next race, with or without fastest lap.
+// Evaluate finishing k (0-index) in the next race. s: 3 clinched, 2 own hands, 1 needs help, 0 out.
 function evalFinish(k,fl,P,riv,R){
   const me2=P+PTS[k]+(fl?1:0), left=R-1;
   const slots=PTS.filter((_,i)=>i!==k);
   const best=slots[0]+(fl?0:1);
-  if(riv.every(p=>me2+left>p+best+21*left))return 2; // clinched
-  let r2=riv.map((p,i)=>({p,i})).sort((a,b)=>a.p-b.p);
+  if(riv.every(p=>me2+left>p+best+21*left))return {s:3,t:'\ud83c\udfc6 Clinched'};
+  if(left>0){
+    const rv2=riv.map(p=>p+best);
+    const g=[false,true].map(f2=>{let ok=-1;for(let k2=0;k2<12;k2++){const mine=me2+left*(PTS[k2]+(f2?1:0));const rv=left*((k2===0?16:20)+(f2?0:1));if(rv2.every(p=>mine>p+rv))ok=k2}return ok});
+    const when=left>1?' each race':' in the last race';
+    if(g[0]>=0)return {s:2,t:'Then '+ord(g[0]+1)+' or better'+when};
+    if(g[1]>=0)return {s:2,t:'Then '+ord(g[1]+1)+' + fastest lap'+when};
+  }
+  let r2=riv.map(p=>({p})).sort((a,b)=>a.p-b.p);
   r2.forEach((o,j)=>o.p+=slots[j]);
   if(!fl){r2.sort((a,b)=>a.p-b.p);r2[0].p+=1}
   const arr=r2.map(o=>o.p);
-  if(left===0)return me2>Math.max(...arr)?2:0;
-  return canWin(me2,arr,left)?1:0;
+  const alive=left===0?me2>Math.max(...arr):canWin(me2,arr,left);
+  return alive?{s:1,t:'Needs help'}:{s:0,t:'Out'};
 }
-const LBL=['<span class="bad">Out</span>','<span class="warn">Alive</span>','<span class="good">🏆 Clinched</span>'];
+const CLS=['bad','warn','warn','good'];
 
 let ctx=null;
 function renderWI(P,riv,R,next){
@@ -165,20 +172,21 @@ function calc(){
   res.innerHTML=h;
 
   // next race table
-  const rows=[];let minClinch=null,minAlive=null;
+  const rows=[];let minClinch=null,minOwn=null;
+  const cell=o=>`<span class="${CLS[o.s]}">${o.t}</span>`;
   for(let k=0;k<12;k++){
     const a=evalFinish(k,false,P,riv,R),b=evalFinish(k,true,P,riv,R);
-    rows.push(`<tr><td>${ord(k+1)}</td><td>${LBL[a]}</td><td>${LBL[b]}</td></tr>`);
-    if(a===2||b===2)minClinch=[k,a===2?'':' + fastest lap'];
-    if(a>=1||b>=1)minAlive=[k,a>=1?'':' + fastest lap'];
+    rows.push(`<tr><td>${ord(k+1)}</td><td>${cell(a)}</td><td>${cell(b)}</td></tr>`);
+    if(a.s===3||b.s===3)minClinch=[k,a.s===3?'':' + fastest lap'];
+    if(a.s>=2||b.s>=2)minOwn=[k,a.s>=2?'':' + fastest lap'];
   }
   let sum='';
-  if(clinched)sum='<p>Nothing to worry about — race for fun.</p>';
+  if(clinched)sum='<p>Nothing to worry about, race for fun.</p>';
   else{
-    sum=minClinch?`<p>Lowest finish that clinches the title: <b>${ord(minClinch[0]+1)}${minClinch[1]}</b>.</p>`:`<p>No finish in the next race clinches it outright.</p>`;
-    sum+=minAlive?`<p>Lowest finish that keeps you alive: <b>${ord(minAlive[0]+1)}${minAlive[1]}</b>.</p>`:`<p class="bad">No finish in the next race keeps you alive.</p>`;
+    sum=minClinch?`<p>Lowest finish that clinches the title right now: <b>${ord(minClinch[0]+1)}${minClinch[1]}</b>.</p>`:(R>1?`<p>No single finish clinches it yet. The title gets decided over the last ${R} races.</p>`:`<p>No finish clinches it outright.</p>`);
+    sum+=minOwn?`<p>Lowest finish that keeps the title in your own hands: <b>${ord(minOwn[0]+1)}${minOwn[1]}</b>.</p>`:`<p class="bad">No finish keeps it in your own hands. You'd need rivals to drop points.</p>`;
   }
-  nc.innerHTML=`<h2>Next race (#${next}) — what it takes</h2>${sum}<div class="wrap"><table><tr><th>Your finish</th><th>No fastest lap</th><th>With fastest lap</th></tr>${rows.join('')}</table></div><p class="note">Assumes the worst for you on the clinch check (rival wins every remaining race) and the best on the alive check.</p>`;
+  nc.innerHTML=`<h2>Next race (#${next}): what it takes</h2>${sum}<div class="wrap"><table><tr><th>Your finish</th><th>No fastest lap</th><th>With fastest lap</th></tr>${rows.join('')}</table></div><p class="note"><b>Clinched</b>: locked up even if rivals win and take fastest lap every remaining race. <b>Then X</b>: finish that well in the remaining race(s) and it's locked up. <b>Needs help</b>: you can only win if rivals also drop points. <b>Out</b>: can't win.</p>`;
 
   // rivals
   const rr=all.map((p,i)=>{
