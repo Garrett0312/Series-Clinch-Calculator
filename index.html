@@ -68,6 +68,10 @@ function ord(n){return n+(n==1?'st':n==2?'nd':n==3?'rd':'th')}
 SAMPLE.forEach((v,i)=>{const d=document.createElement('div');d.className='slot';d.id='s'+i;
 d.innerHTML=`<b>${ord(i+1)}</b><input type="number" inputmode="numeric" min="0" id="p${i}" placeholder="pts">`;grid.appendChild(d)});
 document.querySelectorAll('input,select').forEach(e=>e.addEventListener('input',calc));
+['total','next'].forEach(id=>$(id).addEventListener('change',()=>{
+  SAMPLE.forEach((_,i)=>$('p'+i).value='');
+  calc();
+}));
 
 // Best case for me: rivals' points spread as evenly as possible over R races where I win.
 function canWin(me,riv,R){
